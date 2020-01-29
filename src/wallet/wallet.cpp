@@ -2167,30 +2167,22 @@ bool CWallet::SelectStakeCoins(std::set<std::pair<const CWalletTx*, unsigned int
 
 bool CWallet::MintableCoins()
 {
-    std::vector<COutput> vCoins;
+    CAmount nBalance = GetBalance();
 
-    {
-        LOCK2(cs_main, cs_wallet);
-        CAmount nBalance = GetBalance();
+    if (nBalance > 0) {
+        if (mapArgs.count("-reservebalance") && !ParseMoney(mapArgs["-reservebalance"], nReserveBalance))
+            return error("%s : invalid reserve balance amount", __func__);
+        if (nBalance <= nReserveBalance)
+            return false;
 
-        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
-            const uint256& wtxid = it->first;
-            const CWalletTx* pcoin = &(*it).second;
+        vector<COutput> vCoins;
+        AvailableCoins(vCoins, true);
 
-            int cannotSpend = 0;
-            {
-                AvailableCoins(wtxid, pcoin, vCoins, cannotSpend, true);
-                if (!vCoins.empty()) {
-                    for (const COutput& out : vCoins) {
-                        int64_t nTxTime = out.tx->GetTxTime();
-                        //add in-wallet minimum staking
-                        CAmount nVal = getCOutPutValue(out);
-                        //nTxTime <= nTime: only stake with UTXOs that are received before nTime time
-                        if ((GetAdjustedTime() > nStakeMinAge + nTxTime) && (nVal >= MINIMUM_STAKE_AMOUNT))
-                            return true;
-                    }
-                }
-            }
+        for (const COutput& out : vCoins) {
+            CAmount nVal = getCOutPutValue(out);
+            int64_t nTxTime = out.tx->GetTxTime();
+            if ((GetAdjustedTime() > nStakeMinAge + nTxTime) && (nVal >= MINIMUM_STAKE_AMOUNT))
+                return true;
         }
     }
 
